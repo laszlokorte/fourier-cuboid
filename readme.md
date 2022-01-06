@@ -1,5 +1,6 @@
 ![Screenshot of the app](preview.png)
 
+[Live Demo](https://static.laszlokorte.de/fourier/)
 
 # Fourier Cuboid
 
