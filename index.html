@@ -421,12 +421,16 @@
         </p>
 
         <p>The transformation between time and frequency domain is done via Discrete Fourier Transform (DFT). This means that the signal and spectrum are both sampled discretely and not continuous as that would not be possible on a computer. Currently 2048 samples are used. Signals with frequencies higher than 1024/period may result in aliasing.</p>
+
+        <p>
+          <a href="https://tools.laszlokorte.de/" title="More Educational Tools">more educational tools</a>
+        </p>
         </details>
       </div>
     </div>
     <script src="regl.js"></script>
     <script>
-            function transformMesh(key, mesh, fn) {
+      function transformMesh(key, mesh, fn) {
         return {
           ...mesh,
           [key]: {
@@ -1840,6 +1844,7 @@
       const rotationMatricesAxis = Array(6).fill(null).map((_,s) => [
         makeMatrixRotateY(-Math.PI*2 * s/4),
         makeMatrixTranslate(0,0,0.25),
+        makeMatrixScale(1,1,s>1?-1:1),
       ].reduce(matrixMultiplyMatrix))
 
       const rotationMatricesAxisFlipped = Array(6).fill(null).map((_,s) => [
@@ -1851,6 +1856,7 @@
       const rotationMatricesAxisNoCube = Array(6).fill(null).map((_,s) => [
         makeMatrixRotateY(-Math.PI*2 * s/4),
         makeMatrixTranslate(0,0,0.5),
+        makeMatrixScale(1,1,s>1?-1:1),
       ].reduce(matrixMultiplyMatrix))
 
       const rotationMatricesAxisNoCubeFlipped = Array(6).fill(null).map((_,s) => [
