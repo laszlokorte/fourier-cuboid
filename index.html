@@ -330,7 +330,7 @@
                shift</label>
             </dt>
             <dd style="grid-column: span 2;">
-              <input class="input-field" type="range" name="frequency_shift" id="frequency_shift" min="-0.25" max="0.25" step="0.01" value="0">
+              <input class="input-field" type="range" name="frequency_shift" id="frequency_shift" min="-0.075" max="0.075" step="0.001" value="0">
             </dd>
           </dl>
 
@@ -1367,7 +1367,7 @@
             return
           }
           evt.preventDefault()
-          zoom(evt.wheelDelta/400)
+          zoom(evt.wheelDelta/400 || evt.deltaY / 100)
         })
 
         var touchState = {
