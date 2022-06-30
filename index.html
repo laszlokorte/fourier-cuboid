@@ -282,7 +282,7 @@
               <input class="input-field" type="range" name="samples" min="0" max="8" value="5" name="bandwidth" id="bandwidth" oninput="bandwidth_out.value=Math.pow(2,this.valueAsNumber)">
             </dd>
             <dd class="output-field center">
-              <output class="output-field" name="bandwidth_out" for="bandwidth">128</output>
+              <output class="output-field" name="bandwidth_out" for="bandwidth">32</output>
             </dd>
 
             <dt>
@@ -296,6 +296,7 @@
                 <option value="triangle">Triangle</option>
                 <option value="cos">Cosine</option>
                 <option value="dirac_pair">Dirac Pair</option>
+                <option value="dirac_impulse">Dirac Impulse</option>
                 <option value="sha">Sha Train</option>
                 <option value="exp">Exponential</option>
                 <option value="saw">Saw</option>
@@ -305,7 +306,7 @@
               <label for="amplitude">Amplitude (scale)</label>
             </dt>
             <dd style="grid-column: span 2;">
-              <input class="input-field" type="range" step="0.1" name="amplitude" id="amplitude" min="0" max="5" value="1">
+              <input class="input-field" type="range" step="0.1" name="amplitude" id="amplitude" min="0" max="2" value="1">
             </dd>
 
             <dt>
@@ -1707,8 +1708,8 @@
           amplitudes = _fft(amplitudes)
 
           for(i = 0; i < N; ++i){
-              amplitudes[i][0] *= Math.sqrt(iN/2)
-              amplitudes[i][1] *= Math.sqrt(iN/2)
+              amplitudes[i][0] *= Math.sqrt(iN)
+              amplitudes[i][1] *= Math.sqrt(iN)
           }
           return amplitudes;
       }
@@ -1730,8 +1731,8 @@
               //Conjugate again
               amplitudes[i][1] = -amplitudes[i][1]
               // Scale
-              amplitudes[i][0] *= Math.sqrt(iN/2)
-              amplitudes[i][1] *= Math.sqrt(iN/2)
+              amplitudes[i][0] *= Math.sqrt(iN)
+              amplitudes[i][1] *= Math.sqrt(iN)
           }
           return amplitudes;
       }
@@ -1739,8 +1740,7 @@
       const generators = {
         gaus: (f, bandwidth) =>
         Math.exp(-(f*f)/4/bandwidth/bandwidth)/Math.sqrt(bandwidth)/Math.sqrt(2*Math.PI),
-        rect: (f, bandwidth) =>
-        (Math.abs(f/Math.PI) < bandwidth) /Math.sqrt(bandwidth)/Math.sqrt(2*Math.PI)/2,
+        rect: (f, bandwidth) => (f/Math.PI > -(bandwidth/2) && f/Math.PI < (bandwidth/2)) /Math.sqrt(bandwidth)/Math.sqrt(2*Math.PI)/2,
         constant: (f, bandwidth) =>
         1 / sampleSize * 8,
         triangle: (f, bandwidth) =>
@@ -1748,7 +1748,8 @@
         sinc: (f, bandwidth) => (f==0? 1 :
         Math.sin(f/bandwidth*Math.PI/2)/(f/bandwidth*Math.PI/2))/Math.sqrt(2*Math.PI)/Math.sqrt(bandwidth),
         cos: (f, bandwidth) => Math.cos(f/bandwidth/4*Math.PI*2)/(16*Math.PI),
-        dirac_pair: (f, bandwidth) => (Math.abs(f)+1==bandwidth ? 1 : 0)/2,
+        dirac_pair: (f, bandwidth) => (Math.abs(f)==bandwidth ? 1 : 0)/2,
+        dirac_impulse: (f, bandwidth) => (f==0 ? 1 : 0),
         sha: (f, bandwidth) => f%bandwidth===0 ? 16*Math.sqrt(bandwidth)/sampleSize : 0,
         exp: (f, bandwidth) => 1/(Math.pow(2, Math.abs(f/bandwidth)))/Math.sqrt(Math.PI)/Math.sqrt(bandwidth),
         saw: (f, bandwidth) => (((f%(bandwidth*2)+(bandwidth*2))%(bandwidth*2)-bandwidth)/bandwidth/16/Math.sqrt(2*Math.PI)),
@@ -1768,16 +1769,16 @@
 
         const inputDomain = samples.map((x) => {
           //const f = ((x+freqShift+sampleSize)%(sampleSize))-sampleSize/2
-          const f = (x+freqShift*sampleSize)-sampleSize/2
+          const f = (x+Math.round(freqShift*sampleSize))-sampleSize/2
 
-          const mag = generators[type](f, bandwidth)
+          const mag = generators[type]((x+Math.round(freqShift*sampleSize))-sampleSize/2, bandwidth)
 
           return [
             (x-sampleSize/2)/sampleSize* 0.9,
 
-            mag * amplitude * Math.cos((phaseL*f/sampleSize + phaseC) * Math.PI * 4),
+            mag * amplitude*amplitude * Math.cos((phaseL*f/sampleSize + phaseC) * Math.PI * 4),
 
-            mag * amplitude * Math.sin((phaseL*f/sampleSize + phaseC)* Math.PI * 4),
+            mag * amplitude*amplitude * Math.sin((phaseL*f/sampleSize + phaseC)* Math.PI * 4),
           ]
         })
 
