@@ -251,7 +251,7 @@
     <div class="left">
       <div class="overlay generator-panel">
         <form id="spectrum-form" class="control-panel" onsubmit="event.preventDefault()" oninput="document.getElementsByName('axislabel')[0].classList.toggle('active-a', domain.value!='signal'); document.getElementsByName('axislabel')[0].classList.toggle('active-b',  domain.value=='signal');
-        loadSpectrum(4096, domain.value, generator.value, amplitude.valueAsNumber, phase_constant.valueAsNumber, phase_linear.valueAsNumber, frequency_shift.valueAsNumber, Math.pow(2,bandwidth.valueAsNumber), freq_slice_a.valueAsNumber, freq_slice_b.valueAsNumber, freq_slice_zoom.valueAsNumber)">
+        loadSpectrum(4096, domain.value, generator.value, amplitude.valueAsNumber, phase_constant.valueAsNumber, phase_linear.valueAsNumber, frequency_shift.valueAsNumber, Math.pow(2,bandwidth.valueAsNumber), freq_slice_a.valueAsNumber, freq_slice_b.valueAsNumber, freq_slice_zoom.valueAsNumber, freq_slice_zoom_freq.valueAsNumber)">
 
           <h2 class="overlay-head" style="grid-column: span 2;">Generate</h2>
           <button style="float: right" class="button small" type="reset" onclick="this.form.reset(); this.dispatchEvent(new Event('input',{bubbles:true})); event.preventDefault()">Reset</button>
@@ -336,8 +336,15 @@
           </dl>
 
           <div id="slice-panel" class="control-panel-inner">
-          <h2 style="grid-column: span 3;">Slicing</h2>
-
+          <div style="grid-column: span 3;">
+              <h2>Slicing</h2>
+              <p>
+                Select two frequencies and see their corresponding exponential basis function on the bottom/blue side of the cuboid.
+              </p>
+              <p>
+                On the top side you can the see the bandpass filtered signal in the time domain, having all frequencies outside of the selected range removed.
+              </p>
+          </div>
           <dl class="control-panel-inner">
             <dt>
               <label for="freq_slice_a">Frequency A</label>
@@ -363,10 +370,20 @@
               <label for="freq_slice_zoom">Zoom Slice<br> Amplitude</label>
             </dt>
             <dd>
-              <input class="input-field" type="range" name="samples" min="0.5" max="20" step="0.1" value="1" name="freq_slice_zoom" id="freq_slice_zoom" oninput="freq_slice_out_zoom.value=parseFloat(this.valueAsNumber, 10)">
+              <input class="input-field" type="range" name="samples" min="0" max="10" step="0.5" value="1" name="freq_slice_zoom" id="freq_slice_zoom" oninput="freq_slice_out_zoom.value=parseFloat(this.valueAsNumber, 10)">
             </dd>
             <dd class="output-field">
               <output class="output-field" name="freq_slice_out_zoom" for="freq_slice_zoom">1</output>
+            </dd>
+
+            <dt>
+              <label for="freq_slice_zoom_freq">Zoom Slice<br> Amplitude</label>
+            </dt>
+            <dd>
+              <input class="input-field" type="range" name="samples" min="1" max="5" step="1" value="1" name="freq_slice_zoom_freq" id="freq_slice_zoom_freq" oninput="freq_slice_out_zoom_freq.value=parseFloat(this.valueAsNumber, 10)">
+            </dd>
+            <dd class="output-field">
+              <output class="output-field" name="freq_slice_out_zoom_freq" for="freq_slice_zoom_freq">1</output>
             </dd>
           </dl>
         </div>
@@ -392,8 +409,8 @@
             <li><label class="checkbox-label"><input type="checkbox" checked id="show_shadows" name="show_shadows" value="1"> Shadows</label></li>
             <li><label class="checkbox-label"><input type="checkbox" checked id="show_axis" name="show_axis" value="1"> Axis</label></li>
             <li><label class="checkbox-label"><input type="checkbox" checked id="show_labels" name="show_labels" value="1"> Labels</label></li>
-            <li><label class="checkbox-label"><input type="checkbox" id="show_slices" name="show_slices" value="1"> Slices</label></li>
             <li><label class="checkbox-label"><input type="checkbox" id="show_xray" name="show_xray" value="1"> X-Ray</label></li>
+            <li><label class="checkbox-label"><input type="checkbox" id="show_slices" name="show_slices" value="1"> Slices/Filter</label></li>
           </ul>
         </form>
       </div>
@@ -783,7 +800,7 @@
           precision mediump float;
           varying float vDepth;
           void main () {
-            gl_FragColor = vec4(1.0,1.0,0.5,vDepth);
+            gl_FragColor = vec4(1.0,1.0,1,vDepth);
           }`,
           vert: `
           attribute vec3 position;
@@ -1640,6 +1657,7 @@
       const spectrumBuffer = regl.buffer(sampleSize);
       const sliceABuffer = regl.buffer(sampleSize);
       const sliceBBuffer = regl.buffer(sampleSize);
+      const filteredBuffer = regl.buffer(sampleSize);
 
       function _fft(amplitudes) {
           var N = amplitudes.length
@@ -1755,7 +1773,7 @@
         saw: (f, bandwidth) => (((f%(bandwidth*2)+(bandwidth*2))%(bandwidth*2)-bandwidth)/bandwidth/16/Math.sqrt(2*Math.PI)),
       }
 
-      function loadSpectrum(sampleCount, domain, type, amplitude, phaseC, phaseL, freqShift, bandwidth, sliceA, sliceB, sliceZoom) {
+      function loadSpectrum(sampleCount, domain, type, amplitude, phaseC, phaseL, freqShift, bandwidth, sliceA, sliceB, sliceZoom, sliceZoomFreq) {
         sampleSize = sampleCount
         samples = Array(sampleSize).fill(null).map((_,i) => i)
 
@@ -1796,6 +1814,10 @@
 
         const spec = domain === 'signal' ? outputDomain : inputDomain
 
+        const filterInput = domain === 'spectrum' ? inputDomain : outputDomain
+        const filteredSpectrum = filterInput.map(([f,re,im],i) => (i-filterInput.length/2>freqSliceA && i-filterInput.length/2<freqSliceB) ? [f,re,im] : [f, 0,0])
+        const filteredOutput = fftShift(fftRemovePadding(paddingFactor, fftInverse(fftAddPadding(paddingFactor, fftShift(filteredSpectrum).map(([_,re,im]) => [re, im]))))).map(([re,im], i) => [inputDomain[i][0], re, im])
+
         const sliceDomainA = samples.map((x) => {
           const f = x-sampleSize/2
 
@@ -1804,11 +1826,11 @@
           const phase = Math.atan2(spec[sampleSize/2 + freqSliceA][2], spec[sampleSize/2 + freqSliceA][1])
 
           return [
-            sliceZoom * (x-sampleSize/2)/sampleSize* 0.9,
+            Math.pow(2, sliceZoomFreq-1) * (x-sampleSize/2)/sampleSize* 0.9,
 
-            sliceZoom * mag / Math.sqrt(sampleSize) * Math.cos((freqSliceA*f/sampleSize) * Math.PI * 2 + phase),
+            Math.pow(2, sliceZoom-1) * mag / Math.sqrt(sampleSize) * Math.cos((freqSliceA*f/sampleSize) * Math.PI * 2 + phase),
 
-            sliceZoom * mag / Math.sqrt(sampleSize) * Math.sin((freqSliceA*f/sampleSize)* Math.PI * 2 + phase),
+            Math.pow(2, sliceZoom-1) * mag / Math.sqrt(sampleSize) * Math.sin((freqSliceA*f/sampleSize)* Math.PI * 2 + phase),
           ]
         })
 
@@ -1823,16 +1845,17 @@
           const phase = Math.atan2(spec[sampleSize/2 + freqSliceB][2], spec[sampleSize/2 + freqSliceB][1])
 
           return [
-            sliceZoom * (x-sampleSize/2)/sampleSize* 0.9,
+            Math.pow(2, sliceZoomFreq-1) * (x-sampleSize/2)/sampleSize* 0.9,
 
-            sliceZoom * mag / Math.sqrt(sampleSize) * Math.cos((freqSliceB*f/sampleSize) * Math.PI * 2 + phase),
+            Math.pow(2, sliceZoom-1) * mag / Math.sqrt(sampleSize) * Math.cos((freqSliceB*f/sampleSize) * Math.PI * 2 + phase),
 
-            sliceZoom * mag / Math.sqrt(sampleSize) * Math.sin((freqSliceB*f/sampleSize)* Math.PI * 2 + phase),
+            Math.pow(2, sliceZoom-1) * mag / Math.sqrt(sampleSize) * Math.sin((freqSliceB*f/sampleSize)* Math.PI * 2 + phase),
           ]
         })
 
         sliceABuffer(sliceDomainA.flatMap(([x,y,z]) => [x,y,z,x,y,z]).slice(3))
         sliceBBuffer(sliceDomainB.flatMap(([x,y,z]) => [x,y,z,x,y,z]).slice(3))
+        filteredBuffer(filteredOutput.flatMap(([x,y,z]) => [x,y,z,x,y,z]).slice(3))
       }
 
       document.getElementById('spectrum-form').bandwidth.dispatchEvent(new Event("input", {bubbles: true}))
@@ -1868,8 +1891,10 @@
 
       const matrixA = makeMatrixTranslate(0,0,0.25)
       const matrixB = makeMatrixTranslate(0,0,-0.25)
-      const matrixANoCube = makeMatrixTranslate(0,0.7,0.3)
-      const matrixBNoCube = makeMatrixTranslate(0,0.7,-0.3)
+      const matrixC = makeMatrixTranslate(0,0,0)
+      const matrixANoCube = makeMatrixTranslate(0,-0.7,0.3)
+      const matrixBNoCube = makeMatrixTranslate(0,-0.7,-0.3)
+      const matrixCNoCube = makeMatrixTranslate(0,0.7,0)
 
       regl.frame(function () {
 
@@ -2061,7 +2086,7 @@
   		              axisFilter: [1,1,1],
   		              axisShift: [0,0,0],
   		              model: rotationMatricesAxisFlipped[s],
-  		              color: [1,1,0.5, 0.8],
+  		              color: [0,0,1, 1],
   		              width: 7 * window.devicePixelRatio,
   		              segments: 1,
   		              segmentOffset: Math.min(sampleSize-9, freqSliceB + sampleSize/2),
@@ -2076,7 +2101,7 @@
   		              axisFilter: [1,1,1],
   		              axisShift: [0,0,0],
   		              model: rotationMatricesAxisFlipped[s],
-  		              color: [1,1,0.5, 0.8],
+  		              color: [0,0,1, 1],
   		              width: 7 * window.devicePixelRatio,
   		              segments: 1,
   		              segmentOffset: Math.min(sampleSize-9, freqSliceA + sampleSize/2),
@@ -2116,7 +2141,7 @@
                 segments: samples.length-1,
                 resolution: [canvas.width,canvas.height],
                 depth: true,
-                stencilId: 4,
+                stencilId: 5,
               })
 
               drawLine3D({
@@ -2129,7 +2154,7 @@
                 segments: samples.length-1,
                 resolution: [canvas.width,canvas.height],
                 depth: true,
-                stencilId: 4,
+                stencilId: 5,
               })
 
               if(shadowCheckbox.checked) {
@@ -2143,20 +2168,20 @@
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
 
                 drawLine3D({
                   points: sliceABuffer,
                   axisFilter: [1,0,1],
-                  axisShift: [0,-0.25,0],
+                  axisShift: [0,0.25,0],
                   model: matrixA,
                   color: [0,0,0,.5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
 
                 drawLine3D({
@@ -2169,7 +2194,7 @@
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
 
                 drawLine3D({
@@ -2182,20 +2207,20 @@
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
 
                 drawLine3D({
                   points: sliceBBuffer,
                   axisFilter: [1,0,1],
-                  axisShift: [0,-0.25,0],
+                  axisShift: [0,0.25,0],
                   model: matrixB,
                   color: [0,0,0,.5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
 
                 drawLine3D({
@@ -2208,7 +2233,7 @@
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
               }
               
@@ -2222,7 +2247,7 @@
                   segments: 3,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
                 drawArrow3D({
                   points: arrowBuffer,
@@ -2232,7 +2257,7 @@
                   segments: 3,
                   resolution: [canvas.width,canvas.height],
                   depth: true,
-                  stencilId: 4,
+                  stencilId: 5,
                 })
 
                 
@@ -2248,7 +2273,7 @@
                     resolution: [canvas.width,canvas.height],
                     depth: false,
                     segments: 3,
-                    stencilId: 4,
+                    stencilId: 5,
                   })
 
                   drawLabel({
@@ -2257,6 +2282,94 @@
                     atlas: glypthTexture,
                     offset: [0.5,0.5],
                     model: matrixB,
+                    color: [0,0,0, 1],
+                    width: 30 * window.devicePixelRatio,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    segments: 3,
+                    stencilId: 5,
+                  })
+                }
+              }
+            }
+
+
+            if(slicesCheckbox.checked) {
+              drawLine3D({
+                points: filteredBuffer,
+                axisFilter: [1,1,1],
+                axisShift: [0,0,0],
+                model: matrixC,
+                color: [1,1,1, 1],
+                width: 2 * window.devicePixelRatio,
+                segments: samples.length-1,
+                resolution: [canvas.width,canvas.height],
+                depth: true,
+                stencilId: 4,
+              })
+
+              if(shadowCheckbox.checked) {
+                drawLine3D({
+                  points: filteredBuffer,
+                  axisFilter: [0,1,1],
+                  axisShift: [-0.5,0,0],
+                  model: matrixC,
+                  color: [0,0,0,.5],
+                  width: 2 * window.devicePixelRatio,
+                  segments: samples.length-1,
+                  resolution: [canvas.width,canvas.height],
+                  depth: true,
+                  stencilId: 4,
+                })
+
+                drawLine3D({
+                  points: filteredBuffer,
+                  axisFilter: [1,0,1],
+                  axisShift: [0,-0.25,0],
+                  model: matrixC,
+                  color: [0,0,0,.5],
+                  width: 2 * window.devicePixelRatio,
+                  segments: samples.length-1,
+                  resolution: [canvas.width,canvas.height],
+                  depth: true,
+                  stencilId: 4,
+                })
+
+                drawLine3D({
+                  points: filteredBuffer,
+                  axisFilter: [1,1,0],
+                  axisShift: [0,0,-0.5],
+                  model: matrixC,
+                  color: [0,0,0,.5],
+                  width: 2 * window.devicePixelRatio,
+                  segments: samples.length-1,
+                  resolution: [canvas.width,canvas.height],
+                  depth: true,
+                  stencilId: 4,
+                })
+              }
+              
+
+              if(axisCheckbox.checked) {
+                drawArrow3D({
+                  points: arrowBuffer,
+                  model: matrixC,
+                  color: [0,0,0, 1],
+                  width: 2 * window.devicePixelRatio,
+                  segments: 3,
+                  resolution: [canvas.width,canvas.height],
+                  depth: true,
+                  stencilId: 4,
+                })
+
+                
+                if(labelCheckbox.checked) {
+                  drawLabel({
+                    points: labelBuffer,
+                    glyphs: glyphBuffer2,
+                    atlas: glypthTexture,
+                    offset: [0.5,0.5],
+                    model: matrixC,
                     color: [0,0,0, 1],
                     width: 30 * window.devicePixelRatio,
                     resolution: [canvas.width,canvas.height],
@@ -2446,6 +2559,48 @@
                     atlas: glypthTexture,
                     offset: [0.5,0.5],
                     model: matrixBNoCube,
+                    color: [0,0,0, 1],
+                    width: 30 * window.devicePixelRatio,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    segments: 3,
+                  })
+                }
+              }
+            }
+
+            if(slicesCheckbox.checked) {
+              drawLine3D({
+                points: filteredBuffer,
+                axisFilter: [1,1,1],
+                axisShift: [0,0,0],
+                model: matrixCNoCube,
+                color: [1,1,1,1],
+                width: 2 * window.devicePixelRatio,
+                segments: samples.length-1,
+                resolution: [canvas.width,canvas.height],
+                depth: true,
+              })              
+
+              if(axisCheckbox.checked) {
+                drawArrow3D({
+                  points: arrowBuffer,
+                  model: matrixCNoCube,
+                  color: [0,0,0, 1],
+                  width: 2 * window.devicePixelRatio,
+                  segments: 3,
+                  resolution: [canvas.width,canvas.height],
+                  depth: true,
+                })
+
+                
+                if(labelCheckbox.checked) {
+                  drawLabel({
+                    points: labelBuffer,
+                    glyphs: glyphBuffer2,
+                    atlas: glypthTexture,
+                    offset: [0.5,0.5],
+                    model: matrixCNoCube,
                     color: [0,0,0, 1],
                     width: 30 * window.devicePixelRatio,
                     resolution: [canvas.width,canvas.height],
