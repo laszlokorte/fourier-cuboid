@@ -337,7 +337,7 @@
 
           <div id="slice-panel" class="control-panel-inner">
           <div style="grid-column: span 3;">
-              <h2>Slicing</h2>
+              <h2>Slicing/Filter</h2>
               <p>
                 Select two frequencies and see their corresponding exponential basis function on the bottom/blue side of the cuboid.
               </p>
@@ -1864,6 +1864,15 @@
       canvas.width = canvas.clientWidth * window.devicePixelRatio
       canvas.height = canvas.clientHeight * window.devicePixelRatio
 
+      const shadowColors = [
+        [0.3,0.0,0.0,1.0],
+        [0.0,0.3,0.0,1.0],
+        [0.0,0.3,0.3,1.0],
+        [0.3,0.0,0.3,1.0],
+        [0.3,0.3,0.0,1.0],
+        [0.0,0.0,0.3,1.0],
+      ]
+
       const identity = makeMatrixIdentity()
       const rotationMatricesAxis = Array(6).fill(null).map((_,s) => [
         makeMatrixRotateY(-Math.PI*2 * s/4),
@@ -1957,7 +1966,7 @@
                   axisFilter: [0,1,1],
                   axisShift: [(s<2?1:-1)*-0.5,0,s>1?-0.5:0],
                   model: rotationMatricesAxisFlipped[s%2],
-                  color: [0,0,0,0.3],
+                  color: shadowColors[s],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -1970,7 +1979,7 @@
                   axisFilter: [1,0,1],
                   axisShift: [0,-0.25,s>1?-0.5:0],
                   model: rotationMatricesAxisFlipped[s%2],
-                  color: [0,0,0,0.5],
+                  color: shadowColors[s],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -1983,7 +1992,7 @@
                   axisFilter: [1,1,0],
                   axisShift: [0,0,(s<2?-0.75:0.25)],
                   model: rotationMatricesAxisFlipped[s%2],
-                  color: [0,0,0,0.5],
+                  color: shadowColors[s],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2081,35 +2090,82 @@
                     ],
                   })
 
-  		            drawLine3D({
-  		              points: s%2?spectrumBuffer:signalBuffer,
-  		              axisFilter: [1,1,1],
-  		              axisShift: [0,0,0],
-  		              model: rotationMatricesAxisFlipped[s],
-  		              color: [0,0,1, 1],
-  		              width: 7 * window.devicePixelRatio,
-  		              segments: 1,
-  		              segmentOffset: Math.min(sampleSize-9, freqSliceB + sampleSize/2),
-  		              segmentLength: 0,
-  		              resolution: [canvas.width,canvas.height],
-  		              depth: false,
-  		              stencilId: s,
-  		            })
+                  drawLine3D({
+                    points: s%2?spectrumBuffer:signalBuffer,
+                    axisFilter: [1,1,1],
+                    axisShift: [0,0,0],
+                    model: rotationMatricesAxisFlipped[s],
+                    color: [1,1,0,1],
+                    width: 4 * window.devicePixelRatio,
+                    segments: (freqSliceB - freqSliceA),
+                    segmentOffset: Math.min(sampleSize-9, freqSliceA + sampleSize/2),
+                    segmentLength: 1,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    stencilId: s,
+                  })
 
-  		            drawLine3D({
-  		              points: s%2?spectrumBuffer:signalBuffer,
-  		              axisFilter: [1,1,1],
-  		              axisShift: [0,0,0],
-  		              model: rotationMatricesAxisFlipped[s],
-  		              color: [0,0,1, 1],
-  		              width: 7 * window.devicePixelRatio,
-  		              segments: 1,
-  		              segmentOffset: Math.min(sampleSize-9, freqSliceA + sampleSize/2),
-  		              segmentLength: 0,
-  		              resolution: [canvas.width,canvas.height],
-  		              depth: false,
-  		              stencilId: s,
-  		            })
+                  drawLine3D({
+                    points: s%2?spectrumBuffer:signalBuffer,
+                    axisFilter: [1,1,1],
+                    axisShift: [0,0,0],
+                    model: rotationMatricesAxisFlipped[s],
+                    color: [0,0,1,1],
+                    width: 14 * window.devicePixelRatio,
+                    segments: 1,
+                    segmentOffset: Math.min(sampleSize-9, freqSliceB + sampleSize/2),
+                    segmentLength: 0,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    stencilId: s,
+                  })
+
+                  drawLine3D({
+                    points: s%2?spectrumBuffer:signalBuffer,
+                    axisFilter: [1,1,1],
+                    axisShift: [0,0,0],
+                    model: rotationMatricesAxisFlipped[s],
+                    color: [0,0,1,1],
+                    width: 14 * window.devicePixelRatio,
+                    segments: 1,
+                    segmentOffset: Math.min(sampleSize-9, freqSliceA + sampleSize/2),
+                    segmentLength: 0,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    stencilId: s,
+                  })
+
+                  drawLine3D({
+                    points: s%2?spectrumBuffer:signalBuffer,
+                    axisFilter: [1,1,1],
+                    axisShift: [0,0,0],
+                    model: rotationMatricesAxisFlipped[s],
+                    color: [1,1,1, 1],
+                    width: 7 * window.devicePixelRatio,
+                    segments: 1,
+                    segmentOffset: Math.min(sampleSize-9, freqSliceB + sampleSize/2),
+                    segmentLength: 0,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    stencilId: s,
+                  })
+
+                  drawLine3D({
+                    points: s%2?spectrumBuffer:signalBuffer,
+                    axisFilter: [1,1,1],
+                    axisShift: [0,0,0],
+                    model: rotationMatricesAxisFlipped[s],
+                    color: [1,1,1, 1],
+                    width: 7 * window.devicePixelRatio,
+                    segments: 1,
+                    segmentOffset: Math.min(sampleSize-9, freqSliceA + sampleSize/2),
+                    segmentLength: 0,
+                    resolution: [canvas.width,canvas.height],
+                    depth: false,
+                    stencilId: s,
+                  })
+
+
                 }
 
                 // if(s===2) {
@@ -2163,7 +2219,7 @@
                   axisFilter: [0,1,1],
                   axisShift: [-0.5,0,0],
                   model: matrixA,
-                  color: [0,0,0,.5],
+                  color: shadowColors[5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2176,7 +2232,7 @@
                   axisFilter: [1,0,1],
                   axisShift: [0,0.25,0],
                   model: matrixA,
-                  color: [0,0,0,.5],
+                  color: shadowColors[5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2189,7 +2245,7 @@
                   axisFilter: [1,1,0],
                   axisShift: [0,0,0.25],
                   model: matrixA,
-                  color: [0,0,0,.5],
+                  color: shadowColors[5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2202,7 +2258,7 @@
                   axisFilter: [0,1,1],
                   axisShift: [-0.5,0,0],
                   model: matrixB,
-                  color: [0,0,0,.5],
+                  color: shadowColors[5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2215,7 +2271,7 @@
                   axisFilter: [1,0,1],
                   axisShift: [0,0.25,0],
                   model: matrixB,
-                  color: [0,0,0,.5],
+                  color: shadowColors[5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2228,7 +2284,7 @@
                   axisFilter: [1,1,0],
                   axisShift: [0,0,-0.25],
                   model: matrixB,
-                  color: [0,0,0,.5],
+                  color: shadowColors[5],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2314,7 +2370,7 @@
                   axisFilter: [0,1,1],
                   axisShift: [-0.5,0,0],
                   model: matrixC,
-                  color: [0,0,0,.5],
+                  color: shadowColors[4],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2327,7 +2383,7 @@
                   axisFilter: [1,0,1],
                   axisShift: [0,-0.25,0],
                   model: matrixC,
-                  color: [0,0,0,.5],
+                  color: shadowColors[4],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
@@ -2340,7 +2396,7 @@
                   axisFilter: [1,1,0],
                   axisShift: [0,0,-0.5],
                   model: matrixC,
-                  color: [0,0,0,.5],
+                  color: shadowColors[4],
                   width: 2 * window.devicePixelRatio,
                   segments: samples.length-1,
                   resolution: [canvas.width,canvas.height],
