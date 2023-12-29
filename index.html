@@ -251,7 +251,7 @@
     <div class="left">
       <div class="overlay generator-panel">
         <form id="spectrum-form" class="control-panel" onsubmit="event.preventDefault()" oninput="document.getElementsByName('axislabel')[0].classList.toggle('active-a', domain.value!='signal'); document.getElementsByName('axislabel')[0].classList.toggle('active-b',  domain.value=='signal');
-        loadSpectrum(4096, domain.value, generator.value, amplitude.valueAsNumber, phase_constant.valueAsNumber, phase_linear.valueAsNumber, frequency_shift.valueAsNumber, Math.pow(2,bandwidth.valueAsNumber), freq_slice_a.valueAsNumber, freq_slice_b.valueAsNumber, freq_slice_zoom.valueAsNumber, freq_slice_zoom_freq.valueAsNumber)">
+        loadSpectrum(4096, domain.value, generator.value, amplitude.valueAsNumber, phase_constant.valueAsNumber, phase_linear.valueAsNumber, frequency_shift.valueAsNumber, Math.pow(2,bandwidth.valueAsNumber), freq_slice_a.valueAsNumber, freq_slice_b.valueAsNumber, freq_slice_zoom.valueAsNumber, freq_slice_zoom_freq.valueAsNumber, fraction.valueAsNumber)">
 
           <h2 class="overlay-head" style="grid-column: span 2;">Generate</h2>
           <button style="float: right" class="button small" type="reset" onclick="this.form.reset(); this.dispatchEvent(new Event('input',{bubbles:true})); event.preventDefault()">Reset</button>
@@ -332,6 +332,19 @@
             </dt>
             <dd style="grid-column: span 2;">
               <input class="input-field" type="range" name="frequency_shift" id="frequency_shift" min="-0.075" max="0.075" step="0.001" value="0">
+            </dd>
+          </dl>
+
+          <h3 style="grid-column: span 3;margin: 0;">Fractional Transform</h3>
+          <dl class="control-panel-inner">
+            <dt>
+              <label for="bandwidth">Fraction</label>
+            </dt>
+            <dd>
+              <input class="input-field" type="range" name="samples" step="0.05" min="0" max="1" value="1" name="fraction" id="fraction" oninput="fraction_out.value=this.valueAsNumber">
+            </dd>
+            <dd class="output-field center">
+              <output class="output-field" name="fraction_out" for="fraction">0</output>
             </dd>
           </dl>
 
@@ -1659,6 +1672,119 @@
       const sliceBBuffer = regl.buffer(sampleSize);
       const filteredBuffer = regl.buffer(sampleSize);
 
+      function frft2(f, a) {
+          const N = f.length;
+          a = a % 4;
+          
+          if (a === 0) return f.slice();
+          if (a === 2) return f.slice().reverse();
+          if (a === 1) return fft(f.slice());
+          if (a === 3) return ifft(f.slice());
+          
+          let f0 = f.slice();
+
+          if (a > 2.0) {
+              a = a - 2;
+              f0 = f0.reverse();
+          }
+          if (a > 1.5) {
+              a = a - 1;
+              f0 = (fft((f0)));
+          }
+          if (a < 0.5) {
+              a = a + 1;
+              f0 = (ifft((f0)));
+          }
+
+          const alpha = a * Math.PI / 2;
+          const s = Math.PI / (N + 1) / Math.sin(alpha) / 4;
+          const t = Math.PI / (N + 1) * Math.tan(alpha / 2) / 4;
+          const Cs = complScale(complExp(compl(0, -1 * (1 - a) * Math.PI / 4)), Math.sqrt(s / Math.PI));
+
+          const sincArr = Array.from({length: 2 * N - 2}, (_, i) => -(2 * N - 3) + 2 * i).map(sinc).map(x => complScale(x, 1/2))
+
+          const f1 = ifft(fconv(f0, sincArr)).reverse().slice(N, 2 * N - 1);
+          
+          const chrpA = Array.from({length: 2 * N - 1}, (_, i) => complExp(compl(0, -1 * t * Math.pow(-N + 1 + i, 2))));
+          const l0 = arrayMod(chrpA, 2, 0)
+          const l1 = arrayMod(chrpA, 2, 1)
+          const f0m = complZipArrays(f0, l0, complMul);
+          const f1m = complZipArrays(f1, l1, complMul);
+          
+          const chrpB = Array.from({length: 4 * N - 1}, (_, i) => complExp(compl(0, 1 * s * Math.pow(-(2 * N - 1) + i, 2))));
+          const e1 = arrayMod(chrpB, 2, 0);
+          const e0 = arrayMod(chrpB, 2, 1);
+          const f0c = fconv(f0m, e0);
+          const f1c = fconv(f1m, e1);
+          const h0 = ifft(complZipArrays(f0c, f1c, complAdd));
+
+          return fftShift(l0.map((l, i) => complMul(Cs, l, h0[N + i])).map(x => complScale(x, Math.sqrt(N))))
+
+      }
+
+      function complZipArrays(a,b, op) {
+        return a.map((value, i) => op(value, b[i]))
+      }
+
+      function arrayMod(a, m, c) {
+        return a.filter((_, i) => i % m === c)
+      }
+
+      function fconv(x, y, c) {
+          const N = x.length + y.length - 1;
+          const P = Math.pow(2, Math.ceil(Math.log2(N)));
+          const fft_x = fft(padd(x, P))
+          const fft_y = fft(padd(y, P))
+          const z = fft_x.map((value, i) => complMul(value, fft_y[i]));
+
+          return z
+      }
+
+      function compl(re, im) {
+        return [re, im]
+      }
+
+      function complExp(z) {
+        return [
+          Math.exp(z[0]) * Math.cos(z[1]),
+          Math.exp(z[0]) * Math.sin(z[1]),
+        ]
+      }
+
+      function complAdd(...args) {
+        return args.reduce(function (a, b) {
+          return [
+            a[0] + b[0],
+            a[1] + b[1],
+          ]
+        }, compl(0,0))
+      }
+
+      function complMul(...args) {
+        return args.reduce(function(a, b) {
+          return [
+            a[0] * b[0] - a[1] * b[1],
+            a[0] * b[1] + a[1] * b[0],
+          ]
+        }, compl(1, 0)) 
+      }
+
+      function complScale(z, s) {
+        return [
+          z[0]*s,
+          z[1]*s,
+        ]
+      }
+
+      
+      function padd(a, p) {
+        return [...a, ...Array(p - a.length).fill(null).map(_ => compl(0,0))]
+      }
+
+      function sinc(x) {
+        return [Math.sin(Math.PI*x) / (Math.PI*x), 0]
+      }
+
       function _fft(amplitudes) {
           var N = amplitudes.length
 
@@ -1732,7 +1858,7 @@
           return amplitudes;
       }
 
-      function fftInverse(amplitudes)
+      function ifft(amplitudes)
       {
           N = amplitudes.length;
           iN = 1 / N;
@@ -1773,7 +1899,7 @@
         saw: (f, bandwidth) => (((f%(bandwidth*2)+(bandwidth*2))%(bandwidth*2)-bandwidth)/bandwidth/16/Math.sqrt(2*Math.PI)),
       }
 
-      function loadSpectrum(sampleCount, domain, type, amplitude, phaseC, phaseL, freqShift, bandwidth, sliceA, sliceB, sliceZoom, sliceZoomFreq) {
+      function loadSpectrum(sampleCount, domain, type, amplitude, phaseC, phaseL, freqShift, bandwidth, sliceA, sliceB, sliceZoom, sliceZoomFreq, fraction) {
         sampleSize = sampleCount
         samples = Array(sampleSize).fill(null).map((_,i) => i)
 
@@ -1800,8 +1926,8 @@
           ]
         })
 
-        const transform = {spectrum: fftInverse, signal: fft}[domain]
-        const outputDomain = fftShift(fftRemovePadding(paddingFactor, transform(fftAddPadding(paddingFactor, fftShift(inputDomain).map(([_,re,im]) => [re, im]))))).map(([re,im], i) => [inputDomain[i][0], re, im])
+        const frac = {spectrum: (fraction%1)-1, signal: 1+(fraction%1)}[domain]
+        const outputDomain = fftShift(fftRemovePadding(paddingFactor, frft2(fftAddPadding(paddingFactor, fftShift(inputDomain).map(([_,re,im]) => [re, im])), frac))).map(([re,im], i) => [inputDomain[i][0], re, im])
 
         const origin = inputDomain.flatMap(([x,y,z]) => [x,y,z,x,y,z]).slice(3)
         const target = outputDomain.flatMap(([x,y,z]) => [x,y,z,x,y,z]).slice(3)
@@ -1816,7 +1942,7 @@
 
         const filterInput = domain === 'spectrum' ? inputDomain : outputDomain
         const filteredSpectrum = filterInput.map(([f,re,im],i) => (i-filterInput.length/2>freqSliceA && i-filterInput.length/2<freqSliceB) ? [f,re,im] : [f, 0,0])
-        const filteredOutput = fftShift(fftRemovePadding(paddingFactor, fftInverse(fftAddPadding(paddingFactor, fftShift(filteredSpectrum).map(([_,re,im]) => [re, im]))))).map(([re,im], i) => [inputDomain[i][0], re, im])
+        const filteredOutput = fftShift(fftRemovePadding(paddingFactor, ifft(fftAddPadding(paddingFactor, fftShift(filteredSpectrum).map(([_,re,im]) => [re, im]))))).map(([re,im], i) => [inputDomain[i][0], re, im])
 
         const sliceDomainA = samples.map((x) => {
           const f = x-sampleSize/2
