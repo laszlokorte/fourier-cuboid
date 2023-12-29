@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Fourier Cube</title>
+		<style>
+
+			:root {
+				height: 100%;
+			}
+
+			.body {
+				background: whitesmoke;
+				display: grid;
+				grid-template-columns: 1fr 1fr 1fr;
+				grid-template-rows: 1fr 1fr 1fr;
+				gap: 1em;
+				margin: 0;
+				height: 100%;
+			}
+
+			.screen {
+				grid-column: 1 / -1;
+				grid-row: 1 / -1;
+				justify-self: stretch;
+				align-self: center;
+				background: white;
+				height: auto;
+				width: 100%;
+				max-height: 100%;
+			}
+
+			.menu {
+				grid-row: 1;
+				grid-column: 1;
+        display: grid;
+        grid-template-columns: max-content max-content;
+        padding: 1em;
+        gap: 0.5em;
+        align-items: center;
+        background: #cccc;
+        justify-self: flex-start;
+        margin: 1em;
+        border:  2px solid white;
+			}
+
+			.menu-titel {
+				grid-column: 1 / -1;
+				margin:  0;
+			}
+
+			.button-row {
+				display: grid;
+				grid-column: 1 / -1;
+				grid-template-columns: repeat(auto-fit, minmax(3em, 1fr));
+				gap: 1em;
+			}
+
+			.camera-button {
+				background-color: #333;
+				filter: brightness(0.9);
+				border: 4px solid var(--accent-color, gray);
+				color: #fff;
+				font:  inherit;
+				padding: 0.1em 0.1em 0.2em;
+				cursor: pointer;
+				vertical-align: middle;
+			}
+
+			.camera-button:hover {
+				background-color: #666;
+			}
+		</style>
+	</head>
+	<body class="body">
+		<script>
+			function vectorMultiplyMatrix([x,y,z], matrix) {
+				return [
+					// wir verstehen ein Element mit 12 Elementen als 3x4 Matrix
+					// ein 3D Punkt/Vektor mal eine 3x4 Matrix ergibt wieder einen Punkt
+					/*neues X:*/ x * matrix[0] + y * matrix[1] + z * matrix[2] + matrix[3],
+					/*neues Y:*/ x * matrix[4] + y * matrix[5] + z * matrix[6] + matrix[7],
+					/*neues Z:*/ x * matrix[8] + y * matrix[9] + z * matrix[10] + matrix[11],
+				]
+			}
+			
+			function matrixMultiplyMatrix([
+			_x1,  _x2,  _x3,  _x4,
+			_y1,  _y2,  _y3,  _y4,
+			_z1,  _z2,  _z3,  _z4
+			], [
+			x1,  x2,  x3,  x4,
+			y1,  y2,  y3,  y4,
+			z1,  z2,  z3,  z4
+			]) {
+				return [
+					x1 * _x1 + x2 * _y1 + x3 * _z1 + x4 * 0,
+					x1 * _x2 + x2 * _y2 + x3 * _z2 + x4 * 0,
+					x1 * _x3 + x2 * _y3 + x3 * _z3 + x4 * 0,
+					x1 * _x4 + x2 * _y4 + x3 * _z4 + x4 * 1,
+						
+					y1 * _x1 + y2 * _y1 + y3 * _z1 + y4 * 0,
+					y1 * _x2 + y2 * _y2 + y3 * _z2 + y4 * 0,
+					y1 * _x3 + y2 * _y3 + y3 * _z3 + y4 * 0,
+					y1 * _x4 + y2 * _y4 + y3 * _z4 + y4 * 1,
+						
+					z1 * _x1 + z2 * _y1 + z3 * _z1 + z4 * 0,   
+					z1 * _x2 + z2 * _y2 + z3 * _z2 + z4 * 0,
+					z1 * _x3 + z2 * _y3 + z3 * _z3 + z4 * 0,
+					z1 * _x4 + z2 * _y4 + z3 * _z4 + z4 * 1,
+				]
+			}
+
+			function comparePolygons(a,b) {
+				var az = a.map(([x,y,z]) => z).sort((a,b) => b-a)
+				var bz = b.map(([x,y,z]) => z).sort((a,b) => b-a)
+			
+				for(let i=0;i<az.length;i++) {
+					if(Math.abs(az[i] - bz[i]) > 0.001) {
+						return bz[i] - az[i];
+					}
+				}
+				
+				return 0;
+			}
+			
+			function clockwise([x1,y1],[x2,y2],[x3,y3]) {
+				let orientierung = (y2 - y1)*(x3 - x2) - (y3 - y2)*(x2 - x1);
+
+				return orientierung >= 0;
+			}
+
+			function makeCube(width, height, depth, color) {
+				return {
+					vertices: [
+						[width,height,depth], 
+						[-width,height, depth], 
+						[-width,-height, depth], 
+						[width,-height, depth],
+						[width,height,-depth], 
+						[-width,height, -depth], 
+						[-width,-height, -depth], 
+						[width,-height, -depth]
+					],
+					faces: [
+						// AUSSEN
+						// Vorderseite
+						[1,0,2], [3,2,0],
+							
+						// Hinterseite
+						[4,5,6], [6,7,4],
+
+						[6,3,7], [3,6,2], 
+						[2,6,5], [2,5,1], 
+						[7,3,4], [4,3,0], 
+						[5,4,0],[5,0,1],
+					],
+					colors: color ? [color,color,color,color,color,color,color,color,color,color,color,color] : [
+						'red','red',
+						'cyan','cyan',
+						'blue','blue',
+						'green','green',
+						'magenta','magenta',
+						'yellow','yellow',
+					],
+					strokes: [
+					],
+				}
+			}
+
+			function makeCubeBW(width, height, depth) {
+				return {
+					vertices: [
+						[width,height,depth], 
+						[-width,height, depth], 
+						[-width,-height, depth], 
+						[width,-height, depth],
+						[width,height,-depth], 
+						[-width,height, -depth], 
+						[-width,-height, -depth], 
+						[width,-height, -depth]
+					],
+					faces: [
+						// INNEN
+						// Vorderseite
+						[0,1,2], [2,3,0],
+							
+						// Hinterseite
+						[5,4,6], [7,6,4],
+
+						[3,6,7], [6,3,2], 
+						[6,2,5], [5,2,1], 
+						[3,7,4], [3,4,0], 
+						[4,5,0],[0,5,1]
+					],
+					colors: [
+						'#888','#888',
+						'#888','#888',
+						'#555','#555',
+						'#aaa','#aaa',
+						'#aaa','#aaa',
+						'#555','#555',
+					],
+					strokes: [
+					],
+				}
+			}
+
+			function makeCubeWire(width, height, depth, labels) {
+				return {
+					vertices: [
+						[width,height,depth], 
+						[-width,height, depth], 
+						[-width,-height, depth], 
+						[width,-height, depth],
+						[width,height,-depth], 
+						[-width,height, -depth], 
+						[-width,-height, -depth], 
+						[width,-height, -depth]
+					],
+					faces: [
+						// AUSSEN
+						// Vorderseite
+						[1,0,2], [3,2,0],
+							
+						// Hinterseite
+						[4,5,6], [6,7,4],
+
+						[6,3,7], [3,6,2], 
+						[2,6,5], [2,5,1], 
+						[7,3,4], [4,3,0], 
+						[5,4,0],[5,0,1],
+					],
+					colors: null,
+					strokes: [
+						[4,0,1,5],
+						[6,2,3,7],
+						[0,3],[1,2],[5,6],[4,7]
+					],
+					labels: labels ? [
+						'a','b','c','d','e','f','g','h'
+					] : false,
+				}
+			}
+
+			function makeCubeInside(width, height, depth, color) {
+				return {
+					vertices: [
+						[width,height,depth], 
+						[-width,height, depth], 
+						[-width,-height, depth], 
+						[width,-height, depth],
+						[width,height,-depth], 
+						[-width,height, -depth], 
+						[-width,-height, -depth], 
+						[width,-height, -depth]
+					],
+					faces: [
+						// INNEN
+						// Vorderseite
+						[0,1,2], [2,3,0],
+							
+						// Hinterseite
+						[5,4,6], [7,6,4],
+
+						[3,6,7], [6,3,2], 
+						[6,2,5], [5,2,1], 
+						[3,7,4], [3,4,0], 
+						[4,5,0],[0,5,1]
+					],
+					colors: [
+						color,color,
+						color,color,
+						color,color,
+						color,color,
+						color,color,
+						color,color
+					],
+					strokes: [
+						[4,0,1,5],
+						[6,2,3,7],
+						[0,3],[1,2],[5,6],[4,7]
+					],
+				}
+			}
+
+			function makeCubeOpenSide(width, height, depth) {
+				return {
+					vertices: [
+						[width,height,depth], 
+						[-width,height, depth], 
+						[-width,-height, depth], 
+						[width,-height, depth],
+						[width,height,-depth], 
+						[-width,height, -depth], 
+						[-width,-height, -depth], 
+						[width,-height, -depth]
+					],
+					faces: [
+						// AUSSEN
+						// Vorderseite
+							
+						// Hinterseite
+						[4,5,6], [6,7,4],
+
+						[6,3,7], [3,6,2], 
+						[2,6,5], [2,5,1], 
+						[7,3,4], [4,3,0], 
+						[5,4,0],[5,0,1],
+					],
+					colors: [
+						'black', 'black',
+						'black', 'black',
+						'black', 'black',
+						'black', 'black',
+						'black', 'black',
+						'black', 'black',
+						// 'cyan','cyan',
+						// 'magenta','magenta',
+						// 'yellow','yellow',
+						// 'yellow','yellow',
+						// 'magenta','magenta',
+					],
+					strokes: [],
+				}
+			}
+
+			function makeAxis(x,y,z,l1,l2,l3) {
+				return {
+					vertices: [
+						[-x,0,0], [x,0,0],
+						[0,-y,0], [0,y,0],
+						[0,0,-z], [0,0,z],
+						[x+10*Math.sign(x),0,0],
+						[0,-y-10*Math.sign(y),0],
+						[0,0,z+10*Math.sign(z)],
+					],
+					faces: [],
+					strokes: [
+						[0,1],[3,2],[4,5],
+					],
+					arrow: true,
+					labels: [
+						null, null,
+						null, null,
+						null, null,
+						l1,
+						l2,
+						l3
+					],
+          strokeWidth: 1.5
+				}
+			}
+
+      function makePlot(min, max, steps, fn) {
+        return {
+          vertices: Array(steps).fill(null).map((_,i) => fn(min + i/steps * (max-min), i, i-steps/2)),
+          faces: [],
+          strokes: Array(steps-1).fill(null).map((_,i) => [i,i+1]),
+          corners: false,
+          strokeColor: 'white',
+          strokeWidth: 2
+        }
+      }
+
+      function makeBarPlot(min, max, steps, ax, fn) {
+        return {
+          vertices: [
+            ...Array(steps).fill(null).map((_,i) => fn(min + i/steps * (max-min), i)),
+            ...Array(steps).fill(null).map((_,i) => ax(min + i/steps * (max-min), i)),
+          ],
+          faces: [],
+          strokes: Array(steps-1).fill(null).map((_,i) => [i,steps+i]),
+          corners: false,
+          strokeColor: 'white'
+        }
+      }
+
+      function makePlane(width, height, x, y, z, color, strokeColor) {
+      	return {
+          vertices: [
+            [x,y+height, z+width],
+            [x,y-height, z+width],
+            [x,y-height, z-width],
+            [x,y+height, z-width],
+          ],
+          faces: [
+          	[0,1,2],
+          	[0,2,3],
+          	[0,2,1],
+          	[0,3,2]
+          ],
+					colors: [
+					color||'#0002',color||'#0002',
+					color||'#0002',color||'#0002',
+					],
+          strokes: [[2,3]],
+          strokeColor: strokeColor||'#000',
+          corners: false,
+          nostroke: true,
+        }
+      }
+
+			function rotationX(w) {
+				return [
+					 1, 0, 0, 0,
+					 0, Math.cos(w), -Math.sin(w),  0,
+					 0, Math.sin(w),  Math.cos(w), 0,
+				]
+			}
+
+			function rotationY(w) {
+				return [
+					Math.cos(w), 0, Math.sin(w), 0,
+					0, 1, 0, 0,
+					-Math.sin(w), 0, Math.cos(w), 0,
+				]
+			}
+
+			function rotationZ(w) {
+				return [
+					 Math.cos(w), -Math.sin(w), 0,  0,
+					 Math.sin(w),  Math.cos(w), 0, 0,
+					 0, 0, 1, 0,
+				]
+			}
+
+			function translation(positionX, positionY, positionZ) {
+				return [
+					1, 0, 0, positionX,
+					0, 1, 0, -positionY,
+					0, 0, 1, positionZ,
+				]
+			}
+
+			function makeCamera(W,H, positionX, positionY, positionZ, winkelX, winkelY, winkelZ, zoom) {
+				var matrixDrehX = rotationX(winkelX);
+				var matrixDrehY = rotationY(winkelY);
+				var matrixDrehZ = rotationZ(winkelZ);
+				var matrixPosition = translation(positionX, positionY, positionZ);
+				var matrixSkaliere = [
+					zoom*W/2, 0, 0, 0,
+					0, zoom*W/2, 0, 0,
+					0, 0, 1, 0,
+				];
+
+				return [
+					matrixDrehY, matrixDrehX, matrixDrehZ, matrixPosition, matrixSkaliere
+				].reduce(matrixMultiplyMatrix)
+			}
+
+      function _fft(amplitudes) {
+          var N = amplitudes.length
+
+          if(N <= 1){
+              return amplitudes
+          }
+
+          var hN = N / 2;
+
+          var even = Array(hN).fill(null)
+          var odd = Array(hN).fill(null)
+
+          for(var i = 0; i < hN; ++i){
+              even[i] = amplitudes[i*2]
+              odd[i] = amplitudes[i*2+1]
+          }
+
+          even = _fft(even)
+          odd = _fft(odd)
+
+          var a = -2*Math.PI
+
+          for(var k = 0; k < hN; ++k){
+
+
+              var p = k/N;
+              var t = {re: Math.cos(a*p), im: Math.sin(a*p)};
+
+
+              var r = t.re * odd[k].re - t.im * odd[k].im;
+              t.im = t.re * odd[k].im + t.im * odd[k].re;
+              t.re = r;
+
+              amplitudes[k] = { re: even[k].re + t.re, im:  even[k].im + t.im};
+              amplitudes[k + hN] = { re: even[k].re - t.re, im:  even[k].im - t.im};
+          }
+
+
+          return amplitudes;
+      }
+
+      function fft(amplitudes)
+			{
+			    var N = amplitudes.length;
+			    var iN = 1 / N;
+
+			    // Apply Fourier Transform
+			    amplitudes = _fft(amplitudes)
+			 
+			    for(i = 0; i < N; ++i){
+			        amplitudes[i].re *= Math.sqrt(iN/2)
+			        amplitudes[i].im *= Math.sqrt(iN/2)
+			    }
+			    return amplitudes;
+			}
+
+      function fftInverse(amplitudes)
+			{
+			    N = amplitudes.length;
+			    iN = 1 / N;
+			 
+			    // Conjugate if imaginary part is not 0
+			    for(i = 0; i < N; ++i){
+			        amplitudes[i].im = -amplitudes[i].im
+			    }
+			 
+			    // Apply Fourier Transform
+			    amplitudes = _fft(amplitudes)
+			 
+			    for(i = 0; i < N; ++i){
+			        //Conjugate again
+			        amplitudes[i].im = -amplitudes[i].im
+			        // Scale
+			        amplitudes[i].re *= Math.sqrt(iN/2)
+			        amplitudes[i].im *= Math.sqrt(iN/2)
+			    }
+			    return amplitudes;
+			}
+
+			function fftShift(values) {
+				return values.map((_,i) => values[(i*2) % values.length])
+			}
+
+      function shortAngleDist(a0,a1) {
+			    var max = Math.PI*2;
+			    var da = (a1 - a0) % max;
+			    return 2*da % max - da;
+			}
+
+			function angleLerp(a0,a1,t) {
+			    return a0 + shortAngleDist(a0,a1)*t;
+			}
+
+			var spectrumTypes = {
+				singleDirac: (windowWidth, freq, amp, phase, linearPhase, shift, sampleRate) => {
+					return ({
+      			mag: (Math.round(freq)+Math.round(shift*sampleRate/8))==0 ? amp * 1 : 0, 
+        		phase: (linearPhase * Math.round(freq) + phase) * Math.PI * 2
+        	})
+				},
+				doubleDirac: (windowWidth, freq, amp, phase, linearPhase, shift, sampleRate) => {
+					return ({
+      			mag: Math.abs((Math.round(freq)+Math.round(shift*sampleRate/8)))==windowWidth ? amp * 1/(windowWidth?2:1) : 0, 
+        		phase: (linearPhase * freq + phase) * Math.PI * 2
+        	})
+				},
+				constant: (windowWidth, freq, amp, phase, linearPhase, shift, sampleRate) => {
+					return ({
+      			mag: amp * 0.5 / sampleRate, 
+        		phase: (linearPhase * freq + phase) * Math.PI * 2
+        	})
+				},
+				rect: (windowWidth, freq, amp, phase, linearPhase, shift, sampleRate) => {
+					return ({
+      			mag: Math.abs((freq+Math.round(shift*sampleRate/8)))<=windowWidth ? amp * 1/(windowWidth||1) : 0, 
+        		phase: (linearPhase * freq + phase) * Math.PI * 2
+        	})
+				},
+				triangle: (windowWidth, freq, amp, phase, linearPhase, shift, sampleRate) => {
+					return ({
+      			mag: Math.abs((freq+Math.round(shift*sampleRate/8)))<=windowWidth ? amp * ((windowWidth||1) - Math.abs((freq+Math.round(shift*sampleRate/8)))) * 1/(windowWidth||1) * 2/(windowWidth||2) : 0, 
+        		phase: (linearPhase * freq + phase) * Math.PI * 2
+        	})
+				},
+				sinc: (windowWidth, freq, amp, phase, linearPhase, shift, sampleRate) => {
+					return ({
+      			mag: Math.abs((freq+Math.round(shift*sampleRate/8)))<=windowWidth ? amp * ((freq+Math.round(shift*sampleRate/8)) == 0 ? 1 : Math.sin((freq+Math.round(shift*sampleRate/8)))) * 1/(((freq+Math.round(shift*sampleRate/8)))||1) : 0, 
+        		phase: (linearPhase * freq + phase) * Math.PI * 2
+        	})
+				}
+			}
+
+			function makeSignal(spectrumType, sampleRate, windowWidth, amp, phase, linearPhase, shift) {
+				var hRate = sampleRate / 2
+				var generator = spectrumTypes[spectrumType] ?? spectrumTypes[Object.keys(spectrumTypes)[0]]
+				var spectrumFn = (i) => generator(Math.round((windowWidth-1)*sampleRate/100), i-hRate, amp, 1*phase, linearPhase, shift, sampleRate)
+        var spectrumValues = Array(sampleRate).fill(null).map((_,i) => spectrumFn(i))
+
+
+
+        var timeValues = fftInverse(
+          spectrumValues.map(
+            ({mag, phase}) => ({re: mag * Math.cos(phase), im: mag * Math.sin(phase)}))
+        ).map(
+          ({re, im}) => ({mag: Math.sqrt(re*re+im*im), phase: Math.atan2(im, re)})
+        )
+
+        timeValues = fftShift(timeValues).slice(sampleRate / 4, 3*sampleRate / 4)
+
+        timeFn = (t) => {
+					return [
+						t,
+          	spectrumValues.reduce((acc, {mag,phase}, f, all) => acc + mag * Math.cos((t)*(f-spectrumValues.length/2)/all.length*Math.PI*2 + phase), 0), 
+          	spectrumValues.reduce((acc, {mag,phase}, f, all) => acc + mag * Math.sin((t)*(f-spectrumValues.length/2)/all.length*Math.PI*2 + phase), 0)
+          	]
+        }
+
+        return {
+        	spectrumValues,
+        	timeValues,
+        	spectrumFn,
+        	timeFn
+        }
+			}
+
+			function makeScene(signal, timeSelection, freqSelection) {
+				var sampleRate = signal.spectrumValues.length
+				var spectrumValues = signal.spectrumValues
+				var timeValues = signal.timeValues
+
+				
+
+				return [
+					{
+						meshes: [
+							makeCube(256, 128, 256),
+						]
+					},
+					{
+						opacity: 0.5,
+						meshes: [
+							makeCubeBW(256, 128, 256),
+             //DEBUG transformMesh(makeCubeBW(256, 128, 512), matrixMultiplyMatrix(translation(0,0,-256), rotationY(Math.PI))),
+						]
+					},
+					{
+						mask: 
+							transformMesh(makeCubeOpenSide(256, 128, 512), matrixMultiplyMatrix(translation(0,0,-256), rotationY(0))),
+						meshes: [
+              transformMesh(makePlane(-256, 128, 2*freqSelection/sampleRate*240, 0, 0, '#af03', '#cc0'), translation(0,0,-240+64 )),
+              transformMesh(makePlane(-256, 128, -2*freqSelection/sampleRate*240, 0, 0, '#af03', '#cc0'), translation(0,0,-240+64 )),
+							makeAxis(240,64,64,'f','re','im'),
+							makePlot(-240, 240, 1000,
+                (t, i) => {
+                	let {mag, phase} = signal.spectrumFn(i/1000 * sampleRate)
+                	return [t, 
+                	-64*mag * Math.cos(phase), 
+                	64*mag * Math.sin(phase)
+                	]
+                }
+              ),
+       		// 		makePlot(-240, 240, spectrumValues.length/2,
+         //        (f, i, j) => {
+									// return [
+         //          	480/(sampleRate)+f, 
+         //          	timeValues.reduce((acc, {mag,phase}, t, all) => acc + -16/Math.sqrt(2)*mag * Math.cos((j)*(t-timeValues.length/2)/all.length*Math.PI*2 + phase), 0),
+         //          	timeValues.reduce((acc, {mag,phase}, t, all) => acc + -16/Math.sqrt(2)*mag * Math.sin((j)*(t-timeValues.length/2)/all.length*Math.PI*2 + phase), 0)]
+         //        }
+         //      ),
+						].map((m) => transformMesh(m, translation(0,0,240-64)))
+					},
+					{
+						mask: 
+							transformMesh(makeCubeOpenSide(256, 128, 512), matrixMultiplyMatrix(translation(0,0,-256), rotationY(Math.PI))),
+						meshes: [
+              transformMesh(makePlane(256, 128, 2*freqSelection/sampleRate*240, 0, 0, '#af03', '#cc0'), translation(0,0,240-64 )),
+              transformMesh(makePlane(256, 128, -2*freqSelection/sampleRate*240, 0, 0, '#af03', '#cc0'), translation(0,0,240-64 )),
+							makeAxis(-240,64,64,'f','re','im'),
+							makePlot(-240, 240, 1000,
+                (t, i) => {
+                	let {mag, phase} = signal.spectrumFn(i/1000 * sampleRate)
+                	return [t, 
+                	-64*mag * Math.cos(phase), 
+                	64*mag * Math.sin(phase)
+                	]
+                }
+              ),
+						].map((m) => transformMesh(m, translation(0,0,-240+64)))
+					},
+					{
+						mask: 
+							transformMesh(makeCubeOpenSide(256, 128, 512), matrixMultiplyMatrix(translation(0,0,-256), rotationY(-Math.PI/2))),
+						meshes: [
+              transformMesh(makePlane(256, 128, -timeSelection*240, 0, 0, '#00f3', '#00c'), matrixMultiplyMatrix(rotationY(Math.PI/2), translation(240-64,0,0))),
+							makeAxis(-64,64,240,'im','re','t'),
+              makePlot(-240, 240, 480,
+                (t, i, j) => {
+                	let [tt, re, im] = signal.timeFn(t/240*timeValues.length)
+									return [
+										-16/Math.sqrt(2) * im,
+										-16/Math.sqrt(2) * re,
+										480/(sampleRate)+tt*240/timeValues.length
+									]
+                }
+              ),
+              {
+              	...makePlot(-240, 240, 2,
+	                (t, i, j) => {
+	                	let [tt, re, im] = signal.timeFn((timeValues.length * timeSelection))
+										return [
+											-16/Math.sqrt(2) * im,
+											-16/Math.sqrt(2) * re,
+											480/(sampleRate)+tt*240/timeValues.length
+										]
+	                }
+	              ),
+	              strokeColor: 'blue',
+          			strokeWidth: 10
+              },
+						].map((m) => transformMesh(m, translation(-240+64,0,0)))
+					},
+
+					{
+						mask: 
+							transformMesh(makeCubeOpenSide(256, 128, 512), matrixMultiplyMatrix(translation(0,0,-256), rotationY(Math.PI/2))),
+						meshes: [
+              transformMesh(makePlane(-256, 128, -timeSelection*240, 0, 0, '#00f3', '#00c'), matrixMultiplyMatrix(rotationY(Math.PI/2), translation(-240+64,0,0))),
+							makeAxis(-64,64,-240,'im','re','t'),
+         			makePlot(-240, 240, 480,
+                (t, i, j) => {
+                	let [tt, re, im] = signal.timeFn(t/240*timeValues.length)
+									return [
+										-16/Math.sqrt(2) * im,
+										-16/Math.sqrt(2) * re,
+										480/(sampleRate)+tt*240/timeValues.length
+									]
+                }
+              ),
+              {
+              	...makePlot(-240, 240, 2,
+	                (t, i, j) => {
+	                	let [tt, re, im] = signal.timeFn((timeValues.length * timeSelection))
+										return [
+											-16/Math.sqrt(2) * im,
+											-16/Math.sqrt(2) * re,
+											480/(sampleRate)+tt*240/timeValues.length
+										]
+	                }
+	              ),
+	              strokeColor: 'blue',
+          			strokeWidth: 10
+              },
+              
+						].map((m) => transformMesh(m, translation(+240-64,0,0)))
+					},
+					{
+						mask:
+							transformMesh(makeCubeOpenSide(256, 256, 256), matrixMultiplyMatrix(rotationX(Math.PI/2), translation(0,-128,0))),
+						meshes: [
+							makeAxis(240,0,240,'im','','re'),
+							makePlot(-240, 240, timeValues.length * 2,
+                (t, i, j) => {
+                	let [tt, re, im] = signal.timeFn(t)
+									return [
+										-64/Math.sqrt(2) * im,
+										0,
+										-64/Math.sqrt(2) * re,
+									]
+									
+                }
+              ),
+              {
+              	...makePlot(-240, 240, 2,
+	                (t, i, j) => {
+	                	let [tt, re, im] = signal.timeFn(timeValues.length * timeSelection)
+										return [
+											-64/Math.sqrt(2) * im,
+											0,
+											-64/Math.sqrt(2) * re,
+										]
+	                }
+	              ),
+	              strokeColor: 'green',
+          			strokeWidth: 10
+              },
+						]
+					},
+					{
+						mask:
+							transformMesh(makeCubeOpenSide(256, 256, 256), matrixMultiplyMatrix(rotationX(-Math.PI/2), translation(0,128,0))),
+						meshes: [
+							...[
+								makeAxis(64,64,-240,'im','re','t'),
+	       				makePlot(-240, 240, timeValues.length * 2,
+	                (t, i, j) => {
+	                	var f = sampleRate/2 + Math.floor(freqSelection) 
+										return [
+	                  	-16/Math.sqrt(2)*spectrumValues[f].mag * Math.sin(j*freqSelection*Math.PI*2/(timeValues.length*2) + spectrumValues[f].phase), 
+	                  	-16/Math.sqrt(2)*spectrumValues[f].mag * Math.cos(j*freqSelection*Math.PI*2/(timeValues.length*2) + spectrumValues[f].phase), 
+	                  	480/(sampleRate)+t]
+	                }
+	              ),
+							].map((m) => transformMesh(m, translation(+240-64,0,0))),
+							...[
+								makeAxis(64,64,-240,'im','re','t'),
+								makePlot(-240, 240, timeValues.length,
+	                (t, i) => {
+	                	var f = sampleRate/2 - Math.floor(freqSelection)
+										return [
+	                  	16/Math.sqrt(2)*spectrumValues[f].mag *
+	                  	Math.sin(-i/timeValues.length*f*(Math.PI*2) + spectrumValues[f].phase), 
+
+	                  	-16/Math.sqrt(2)*spectrumValues[f].mag *
+	                  	Math.cos(-i/timeValues.length*f*(Math.PI*2) + spectrumValues[f].phase), 
+	                  	t]
+	                }
+	              ),
+							].map((m) => transformMesh(m, translation(-240+64,0,0))),
+						]
+					},
+					{
+						meshes: [
+							makeCubeWire(256, 128, 256, false),
+						]
+					},
+
+				]
+			}
+
+			function transformMesh(mesh, matrix) {
+				return {
+					...mesh,
+					vertices: mesh.vertices.map((v) => vectorMultiplyMatrix(v, matrix))
+				}
+			}
+
+			function drawMesh(ctx, cam, mesh) {
+				var vertices = mesh.vertices.map((v) => vectorMultiplyMatrix(v, cam))
+				var vertices2D = vertices.map(([x,y,z]) => [
+					x/z,
+					-y/z
+				])
+				var faceIds = mesh.faces.map((_,i) => i)
+				var sortedFaceIds = faceIds.sort((a,b) => {
+					return comparePolygons(mesh.faces[a].map((e => vertices[e])), mesh.faces[b].map((e => vertices[e])));
+				})
+
+				var clippedFaces = sortedFaceIds.filter((f) =>
+          vertices[mesh.faces[f][0]][2] > 0 &&
+          vertices[mesh.faces[f][1]][2] > 0 &&
+          vertices[mesh.faces[f][2]][2] > 0
+        )
+				var facesClockwise = clippedFaces.filter((t) => clockwise(...mesh.faces[t].map((p) => vertices2D[p])))
+
+				if(mesh.colors) {
+					for(var f=0;f<facesClockwise.length;f++) {
+						var faceId = facesClockwise[f]
+						ctx.fillStyle = mesh.colors[faceId];
+						ctx.strokeStyle = mesh.colors[faceId];
+						ctx.color = mesh.colors[faceId];
+						var v1 = vertices2D[mesh.faces[faceId][0]]
+						var v2 = vertices2D[mesh.faces[faceId][1]]
+						var v3 = vertices2D[mesh.faces[faceId][2]]
+						ctx.beginPath();
+						ctx.moveTo(v1[0], v1[1])
+						ctx.lineTo(v2[0], v2[1])
+						ctx.lineTo(v3[0], v3[1])
+						ctx.closePath()
+						ctx.fill();
+						if(!mesh.nostroke) {
+							ctx.stroke();
+						}
+					}
+				}
+
+				ctx.beginPath();
+				if(mesh.strokes.length) {
+					ctx.strokeStyle = mesh.strokeColor || 'black';
+					ctx.lineWidth = mesh.strokeWidth??1
+
+					for(var f=0;f<mesh.strokes.length;f++) {
+						var s = mesh.strokes[f]
+						ctx.moveTo(vertices2D[s[0]][0], vertices2D[s[0]][1])
+						for(var k=1;k<s.length;k++) {
+							ctx.lineTo(vertices2D[s[k]][0], vertices2D[s[k]][1])
+						}
+						if(mesh.arrow) {
+							var tip = vertices2D[s[s.length - 1]]
+							var source = vertices2D[s[s.length - 2]]
+							var dx = tip[0] - source[0]
+							var dy = tip[1] - source[1]
+							var l = Math.sqrt(dx*dx + dy*dy)
+							dx /= l
+							dy /= l
+							ctx.lineTo(tip[0] - 10*dx - 5*dy, tip[1] - 10*dy + 5*dx)
+							ctx.moveTo(tip[0]+ dx, tip[1] + dy)
+							ctx.lineTo(tip[0] - 10*dx + 5*dy, tip[1] - 10*dy - 5*dx)
+						} else {
+							ctx.closePath()
+						}
+					}
+				}
+				ctx.stroke()
+
+				if(mesh.corners) {
+					ctx.fillStyle = mesh.cornerColor || 'black';
+					ctx.beginPath();
+					for(var j=0;j<vertices2D.length;j++) {
+						ctx.arc(vertices2D[j][0], vertices2D[j][1], 2, 0, 2 * Math.PI, false);
+						ctx.closePath()
+					}
+					ctx.fill();
+				}
+
+				if(mesh.labels) {
+					ctx.font = "20px Arial";
+					ctx.fillStyle = mesh.fontColor || 'black';
+					ctx.textAlign = "center"; 
+					ctx.textBaseline = "middle";
+					for (var l = 0; l < mesh.labels.length; l++) {
+						if(mesh.labels[l]) {
+							ctx.fillText(mesh.labels[l], vertices2D[l][0], vertices2D[l][1])
+						}
+					}
+				}
+			}
+
+			(function() {
+				var canvas = document.createElement('canvas')
+				var offscreen = document.createElement('canvas')
+				canvas.classList.add('screen')
+
+				var ctx = canvas.getContext('2d')
+				var octx = offscreen.getContext('2d')
+
+				document.body.appendChild(canvas)
+
+				var spectrumWindow = 4
+				var spectrumAmplitude = 1
+				var spectrumPhase = 0
+				var spectrumLinearPhase = 0
+				var spectrumSampleRate = 1024
+				var spectrumShift = 0
+				var timeSelection = 0
+				var freqSelection = 15
+
+				var spectrumType = Object.keys(spectrumTypes)[1]
+
+				var scene = makeScene(makeSignal(spectrumType, spectrumSampleRate, spectrumWindow, spectrumAmplitude, spectrumPhase, spectrumLinearPhase, spectrumShift), timeSelection, freqSelection)
+
+				function rebuildSignal() {
+					scene = makeScene(makeSignal(spectrumType, spectrumSampleRate, spectrumWindow, spectrumAmplitude, spectrumPhase, spectrumLinearPhase, spectrumShift), timeSelection, freqSelection)
+				}
+
+				var camRotationX = Math.PI*0.8
+				var camRotationY = 0.9
+				var camZoom = 1
+
+				function render() {
+					var W = canvas.width
+					var H = canvas.height
+					var W2 = W/2
+					var H2 = H/2
+
+					ctx.save()
+					ctx.translate(W2, H2)
+					ctx.scale(1,1)
+					ctx.clearRect(-W2,-H2,W,H)
+
+					var cam = makeCamera(W,H,0,0,1000, camRotationX, camRotationY, 0, camZoom)
+					for (var g = 0; g < scene.length; g++) {
+						ctx.save()
+						if(scene[g].opacity < 1 || scene[g].mask) {
+							for (var m = 0; m < scene[g].meshes.length; m++) {
+								octx.save()
+								octx.translate(W2, H2)
+								octx.scale(1,1)
+								octx.clearRect(-W2,-H2,W,H)
+								for (var m = 0; m < scene[g].meshes.length; m++) {
+									drawMesh(octx, cam, scene[g].meshes[m])
+								}
+								octx.restore()
+							}
+
+							if(scene[g].mask) {
+								octx.save()
+								octx.translate(W2, H2)
+								octx.scale(1,1)
+								octx.globalCompositeOperation = 'destination-out'
+								drawMesh(octx, cam, scene[g].mask)
+								octx.restore()
+							}
+
+							if(scene[g].meshes.length) {
+								ctx.globalAlpha = scene[g].opacity || 1
+
+								ctx.drawImage(offscreen, -W2,-H2)
+							}
+						} else {
+							for (var m = 0; m < scene[g].meshes.length; m++) {
+								drawMesh(ctx, cam, scene[g].meshes[m])
+							}
+						}
+						ctx.restore()
+					}
+
+					ctx.restore()
+				}
+
+				
+				
+				function tick() {
+					render()
+					window.requestAnimationFrame(tick)
+				}
+				tick()
+
+
+				var camDragging = false
+				canvas.addEventListener('mousedown', function(evt) {
+					evt.preventDefault()
+					camDragging = true
+				})
+				window.addEventListener('mouseup', function(evt) {
+					camDragging = false
+				})
+				window.addEventListener('mousemove', function(evt) {
+					if(camDragging) {
+						evt.preventDefault()
+						camRotationX -= evt.movementY/evt.currentTarget.innerHeight * 4
+						camRotationY += evt.movementX/evt.currentTarget.innerWidth * 4
+						camRotationX = Math.max(Math.PI*0.5, Math.min(Math.PI*1.5, camRotationX))
+					}
+				})
+				canvas.addEventListener('wheel', function(evt) {
+					camZoom *= Math.pow(2, evt.wheelDelta/400)
+					camZoom = Math.max(0.5, Math.min(5, camZoom))
+				})
+
+				function resizeCanvas() {
+					  canvas.width  = window.innerWidth * window.devicePixelRatio;
+  					canvas.height = window.innerHeight * window.devicePixelRatio;
+					  offscreen.width  = window.innerWidth * window.devicePixelRatio;
+  					offscreen.height = window.innerHeight * window.devicePixelRatio;
+				}
+
+				resizeCanvas()
+				window.addEventListener('resize', resizeCanvas)
+
+				var menu = document.createElement('div')
+				menu.classList.add('menu')
+
+				var menuTitel = document.createElement('h2')
+				menuTitel.classList.add('menu-titel')
+        menuTitel.appendChild(document.createTextNode('Spectrum S(f)'))
+        menuTitel.style.setProperty('color', 'darkred');
+        menu.appendChild(menuTitel)
+
+        var sampleRateSlider = document.createElement('input')
+				sampleRateSlider.type = 'range'
+				sampleRateSlider.min = 5
+				sampleRateSlider.max = 10
+				sampleRateSlider.step = 1
+				sampleRateSlider.value= Math.log2(spectrumSampleRate)
+				sampleRateSlider.addEventListener('input', function(e) {
+					var old = spectrumSampleRate
+					spectrumSampleRate = Math.pow(2, e.target.value)
+					freqSlider.min = 0
+					freqSlider.max = Math.pow(2, e.target.value) / 2 - 1
+					freqSelection *= spectrumSampleRate / old
+					freqSlider.value = freqSelection
+
+					rebuildSignal()
+
+				})
+        var sampleRateSliderLabel = document.createElement('label')
+        sampleRateSliderLabel.appendChild(document.createTextNode('Sample Rate'))
+        menu.appendChild(sampleRateSliderLabel)
+				menu.appendChild(sampleRateSlider)
+
+
+				var spectrumTypeSelector = document.createElement('select')
+				spectrumTypeSelector.addEventListener('input', function(e) {
+					spectrumType = e.target.value
+
+					rebuildSignal()
+				})
+				for(t of Object.keys(spectrumTypes)) {
+					var opt = document.createElement('option')
+					opt.appendChild(document.createTextNode(t))
+					spectrumTypeSelector.appendChild(opt)
+				}
+				spectrumTypeSelector.value = spectrumType
+        var spectrumTypeSelectorLabel = document.createElement('label')
+        spectrumTypeSelectorLabel.appendChild(document.createTextNode('Spectrum Type'))
+        menu.appendChild(spectrumTypeSelectorLabel)
+				menu.appendChild(spectrumTypeSelector)
+
+				var windowSlider = document.createElement('input')
+				windowSlider.type = 'range'
+				windowSlider.min = 1
+				windowSlider.max = 9
+				windowSlider.step = 1
+				windowSlider.value= spectrumWindow
+				windowSlider.addEventListener('input', function(e) {
+					spectrumWindow = e.target.value
+
+					rebuildSignal()
+				})
+        var windowSliderLabel = document.createElement('label')
+        windowSliderLabel.appendChild(document.createTextNode('Spectrum Window'))
+        menu.appendChild(windowSliderLabel)
+				menu.appendChild(windowSlider)
+
+
+				var ampSlider = document.createElement('input')
+				ampSlider.type = 'range'
+				ampSlider.min = 0
+				ampSlider.max = 2
+				ampSlider.step = 0.001
+				ampSlider.value= spectrumAmplitude
+				ampSlider.addEventListener('input', function(e) {
+					spectrumAmplitude = e.target.value
+
+					rebuildSignal()
+				})
+        var ampSliderLabel = document.createElement('label')
+        ampSliderLabel.appendChild(document.createTextNode('Amplitude'))
+        menu.appendChild(ampSliderLabel)
+				menu.appendChild(ampSlider)
+
+				var phaseSlider = document.createElement('input')
+				phaseSlider.type = 'range'
+				phaseSlider.min = -2
+				phaseSlider.max = 2
+				phaseSlider.step = 0.001
+				phaseSlider.value= spectrumPhase
+				phaseSlider.addEventListener('input', function(e) {
+					spectrumPhase = e.target.value
+
+					rebuildSignal()
+				})
+        var phaseSliderLabel = document.createElement('label')
+        phaseSliderLabel.appendChild(document.createTextNode('Constant Phase'))
+        menu.appendChild(phaseSliderLabel)
+				menu.appendChild(phaseSlider)
+
+				var linearPhaseSlider = document.createElement('input')
+				linearPhaseSlider.type = 'range'
+				linearPhaseSlider.min = -1
+				linearPhaseSlider.max = 1
+				linearPhaseSlider.step = 0.01
+				linearPhaseSlider.value= spectrumLinearPhase
+				linearPhaseSlider.addEventListener('input', function(e) {
+					spectrumLinearPhase = e.target.value
+
+					rebuildSignal()
+				})
+        var linearPhaseSliderLabel = document.createElement('label')
+        linearPhaseSliderLabel.appendChild(document.createTextNode('Linear Phase'))
+        menu.appendChild(linearPhaseSliderLabel)
+				menu.appendChild(linearPhaseSlider)
+
+				var shiftSlider = document.createElement('input')
+				shiftSlider.type = 'range'
+				shiftSlider.min = -1
+				shiftSlider.max = 1
+				shiftSlider.step = 0.01
+				shiftSlider.value= spectrumShift
+				shiftSlider.addEventListener('input', function(e) {
+					spectrumShift = e.target.value
+
+					rebuildSignal()
+				})
+        var shiftSliderLabel = document.createElement('label')
+        shiftSliderLabel.appendChild(document.createTextNode('Frequency Shift'))
+        menu.appendChild(shiftSliderLabel)
+				menu.appendChild(shiftSlider)
+
+				
+
+				var selection = document.createElement('h2')
+				selection.classList.add('menu-titel')
+        selection.appendChild(document.createTextNode('Selection'))
+        menu.appendChild(selection)
+
+				var timeSlider = document.createElement('input')
+				timeSlider.type = 'range'
+				timeSlider.min = -1
+				timeSlider.max = 1
+				timeSlider.step = 0.001
+				timeSlider.value= timeSelection
+				timeSlider.addEventListener('input', function(e) {
+					timeSelection = e.target.value
+
+					rebuildSignal()
+				})
+        var timeSliderLabel = document.createElement('label')
+        timeSliderLabel.appendChild(document.createTextNode('Time'))
+        menu.appendChild(timeSliderLabel)
+				menu.appendChild(timeSlider)
+
+				var freqSlider = document.createElement('input')
+				freqSlider.type = 'range'
+				freqSlider.min = 0
+				freqSlider.max = 255
+				freqSlider.step = 1
+				freqSlider.value= freqSelection
+				freqSlider.addEventListener('input', function(e) {
+					freqSelection = e.target.value
+
+					rebuildSignal()
+				})
+        var freqSliderLabel = document.createElement('label')
+        freqSliderLabel.appendChild(document.createTextNode('Frequency'))
+        menu.appendChild(freqSliderLabel)
+				menu.appendChild(freqSlider)
+
+				var view = document.createElement('h2')
+				view.classList.add('menu-titel')
+        view.appendChild(document.createTextNode('View'))
+        menu.appendChild(view)
+
+        var viewList = document.createElement('div')
+				viewList.classList.add('button-row')
+        menu.appendChild(viewList)
+
+        var viewS = document.createElement('button')
+        viewS.appendChild(document.createTextNode('s(t)'))
+        viewS.classList.add('camera-button')
+        viewS.style.setProperty('--accent-color', 'green');
+        viewS.addEventListener('click', function(e) {
+					camRotationY = Math.PI / 2
+					camRotationX = Math.PI
+				})
+        viewList.appendChild(viewS)
+
+        var viewF = document.createElement('button')
+        viewF.appendChild(document.createTextNode('S(f)'))
+        viewF.classList.add('camera-button')
+        viewF.style.setProperty('--accent-color', 'red');
+        viewF.addEventListener('click', function(e) {
+					camRotationY = 2 * Math.PI
+					camRotationX = Math.PI
+				})
+        viewList.appendChild(viewF)
+
+        var viewSPrime = document.createElement('button')
+        viewSPrime.appendChild(document.createTextNode('s(-t)'))
+        viewSPrime.classList.add('camera-button')
+        viewSPrime.style.setProperty('--accent-color', 'magenta');
+        viewSPrime.addEventListener('click', function(e) {
+					camRotationY = 3 * Math.PI / 2
+					camRotationX = Math.PI
+				})
+        viewList.appendChild(viewSPrime)
+
+        var viewFPrime = document.createElement('button')
+        viewFPrime.appendChild(document.createTextNode('S(-f)'))
+        viewFPrime.classList.add('camera-button')
+        viewFPrime.style.setProperty('--accent-color', 'cyan');
+        viewFPrime.addEventListener('click', function(e) {
+					camRotationY = 2 * Math.PI / 2
+					camRotationX = Math.PI
+				})
+        viewList.appendChild(viewFPrime)
+
+				document.body.appendChild(menu)
+			})()
+		</script>
+	</body>
+</html>
